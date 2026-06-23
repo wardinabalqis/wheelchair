@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/wheelchair/static/css/main.217a5c84.css",
+    "main.js": "/wheelchair/static/js/main.d41bd8c6.js",
+    "static/js/453.f5daa4e2.chunk.js": "/wheelchair/static/js/453.f5daa4e2.chunk.js",
+    "index.html": "/wheelchair/index.html",
+    "main.217a5c84.css.map": "/wheelchair/static/css/main.217a5c84.css.map",
+    "main.d41bd8c6.js.map": "/wheelchair/static/js/main.d41bd8c6.js.map",
+    "453.f5daa4e2.chunk.js.map": "/wheelchair/static/js/453.f5daa4e2.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.217a5c84.css",
+    "static/js/main.d41bd8c6.js"
+  ]
+}
