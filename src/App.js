@@ -1,482 +1,374 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app'; 
-import { getDatabase, ref, update, onValue } from 'firebase/database'; 
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'; // Import Auth
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import {
+  getDatabase,
+  ref,
+  onValue,
+  set
+} from 'firebase/database';
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence
+} from 'firebase/auth';
+import './App.css';
 
-import './App.css';  // Import your CSS here
-
-
-
-// Firebase configuration
+// ================= FIREBASE =================
 const firebaseConfig = {
-  apiKey: "AIzaSyD3uHUf0UX6GBxan_9ewh8985klfupwSsU",
-  authDomain: "wheelchair-de130.firebaseapp.com",
-  databaseURL: "https://wheelchair-de130-default-rtdb.asia-southeast1.firebasedatabase.app/",
-  projectId: "wheelchair-de130",
-  storageBucket: "wheelchair-de130.appspot.com",
-  messagingSenderId: "978586788923",
-  appId: "YOUR_APP_ID" // Replace with your app ID from Firebase project settings
+  apiKey: "AIzaSyCJ76eUpV5wvVlrZLKbd3S1k2gM6PsngB4",
+  authDomain: "wheelchair-15ba8.firebaseapp.com",
+  databaseURL: "https://wheelchair-15ba8-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "wheelchair-15ba8",
+  storageBucket: "wheelchair-15ba8.firebasestorage.app",
+  messagingSenderId: "524149398157",
+  appId: "1:524149398157:web:a80a23e12980181c1320c4"
 };
 
-// Initialize Firebase app and database
 const app = initializeApp(firebaseConfig);
-const database = getDatabase(app);
-const auth = getAuth(app); // Initialize Auth
+const db = getDatabase(app);
+const auth = getAuth(app);
 
-
+// ================= APP =================
 function App() {
-  const [direction, setDirection] = useState('None');
-  const [sliderValue, setSliderValue] = useState(0);
-  const [latitude, setLatitude] = useState(null);
-  const [longitude, setLongitude] = useState(null);
-  
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  const [mpu, setMpu] = useState({});
+  const [heart, setHeart] = useState({ current: 0, avg: 0, last: 0 });
 
-  const mapRef = useRef(null);
+  const [gps, setGps] = useState({ lat: 0, lng: 0 });
+  const [wifiGps, setWifiGps] = useState({ lat: 0, lng: 0 });
+  // NEW: State for phone location
+  const [phoneGps, setPhoneGps] = useState({ lat: 0, lng: 0 });
 
+  const [status, setStatus] = useState("UNKNOWN");
+  const [alerts, setAlerts] = useState([]);
+  const [lastAlert, setLastAlert] = useState(null);
 
+  const [mode, setMode] = useState("wifi");
 
+  const CCTV_URL =
+    "https://spongy-pawing-cornea.ngrok-free.dev/?action=stream";
+
+  // ================= AUTO LOGIN =================
   useEffect(() => {
-    const storedIsLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    const storedEmail = localStorage.getItem('email');
-
-    if (storedIsLoggedIn) {
-      setIsLoggedIn(true);
-      setEmail(storedEmail);
-    }
+    setPersistence(auth, browserLocalPersistence);
   }, []);
 
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+    });
+    return () => unsub();
+  }, []);
 
+  // ================= LOGIN =================
+  const handleLogin = async () => {
+    try {
+      const res = await signInWithEmailAndPassword(auth, email, password);
+      setUser(res.user);
+      setError('');
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setUser(null);
+  };
+
+  // ================= FIREBASE =================
+  useEffect(() => {
+    if (!user) return;
+
+    onValue(ref(db, "mpu6050"), (s) => {
+      if (s.exists()) setMpu(s.val());
+    });
+
+    onValue(ref(db, "heart_rate"), (s) => {
+      if (s.exists()) setHeart(p => ({ ...p, current: s.val() }));
+    });
+
+    onValue(ref(db, "heart_rate_avg"), (s) => {
+      if (s.exists()) setHeart(p => ({ ...p, avg: s.val() }));
+    });
+
+    onValue(ref(db, "last_saved_heart_rate"), (s) => {
+      if (s.exists()) setHeart(p => ({ ...p, last: s.val() }));
+    });
+
+    onValue(ref(db, "latitude"), (s) => {
+      if (s.exists()) setGps(p => ({ ...p, lat: s.val() }));
+    });
+
+    onValue(ref(db, "longitude"), (s) => {
+      if (s.exists()) setGps(p => ({ ...p, lng: s.val() }));
+    });
+
+    onValue(ref(db, "wifi_latitude"), (s) => {
+      if (s.exists()) setWifiGps(p => ({ ...p, lat: s.val() }));
+    });
+
+    onValue(ref(db, "wifi_longitude"), (s) => {
+      if (s.exists()) setWifiGps(p => ({ ...p, lng: s.val() }));
+    });
+
+    // NEW: Listeners for phone location
+    onValue(ref(db, "phone_latitude"), (s) => {
+      if (s.exists()) setPhoneGps(p => ({ ...p, lat: s.val() }));
+    });
+
+    onValue(ref(db, "phone_longitude"), (s) => {
+      if (s.exists()) setPhoneGps(p => ({ ...p, lng: s.val() }));
+    });
+
+    onValue(ref(db, "mpu6050/status"), (s) => {
+      if (s.exists()) setStatus(s.val());
+    });
+
+    onValue(ref(db, "alerts"), (snap) => {
+      if (!snap.exists()) return;
+
+      const data = snap.val();
+      const list = Object.entries(data)
+        .map(([id, val]) => ({ id, ...val }))
+        .reverse();
+
+      setAlerts(list);
+      setLastAlert(list[0]);
+    });
+
+    onValue(ref(db, "mode"), (s) => {
+      if (s.exists()) setMode(s.val());
+    });
+
+  }, [user]);
 
   useEffect(() => {
-    const latRef = ref(database, 'latitude');
-    const lonRef = ref(database, 'longitude');
+    if (!user) return;
+    set(ref(db, "mode"), mode);
+  }, [mode]);
 
-    // Listen for changes in latitude
-    onValue(latRef, (snapshot) => {
-      const latValue = snapshot.val();
-      if (latValue) {
-        setLatitude(latValue);
-      }
-    });
-
-    // Listen for changes in longitude
-    onValue(lonRef, (snapshot) => {
-      const lonValue = snapshot.val();
-      if (lonValue) {
-        setLongitude(lonValue);
-      }
-    });
-  }, [database]);
-/// Handle 
-
-// Handle login
-const handleLogin = (e) => {
-  e.preventDefault();
-  signInWithEmailAndPassword(auth, email, password)
-    .then(() => {
-      setIsLoggedIn(true);
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('email', email);
-      setError(''); // Clear any previous error
-    })
-    .catch((err) => {
-      setError({ message: err.message, style: { color: 'red' } }); // Set error message with red color
-    });
-};
-
-
-
-// Handle logout
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setEmail('');
-    setPassword('');
-    localStorage.removeItem('isLoggedIn');
-    localStorage.removeItem('email');
-  };
-
-
-
-  
-// Handle direction changes when a button is pressed
-const handleDirectionStart = (newDirection) => {
-  setDirection(newDirection);
-
-  // Update Firebase with the direction status
-  update(ref(database), {
-    Up: newDirection === 'Up' ? 'ON' : 'OFF',
-    Down: newDirection === 'Down' ? 'ON' : 'OFF',
-    Left: newDirection === 'Left' ? 'ON' : 'OFF',
-    Right: newDirection === 'Right' ? 'ON' : 'OFF',
-    UpLeft: newDirection === 'UpLeft' ? 'ON' : 'OFF',
-    UpRight: newDirection === 'UpRight' ? 'ON' : 'OFF',
-    DownLeft: newDirection === 'DownLeft' ? 'ON' : 'OFF',
-    DownRight: newDirection === 'DownRight' ? 'ON' : 'OFF',
-    None: 'OFF'
-  }).catch(error => console.error('Firebase update error:', error));
-
-  console.log('Direction:', newDirection);
-
-  // Apply 2-second timeout for UpLeft, UpRight, DownLeft, DownRight
-  if (['UpLeft', 'UpRight', 'DownLeft', 'DownRight'].includes(newDirection)) {
-    setTimeout(() => {
-      // Turn off the specific direction after 2 seconds
-      update(ref(database), {
-        [newDirection]: 'OFF'
-      }).catch(error => console.error('Firebase update error:', error));
-      console.log(`${newDirection} OFF after 2 seconds`);
-    },500); // 2000 milliseconds = 2 seconds
+  // NEW: Updated logic to include phone coordinates based on active mode
+  let lat = 0;
+  let lng = 0;
+  if (mode === "gps") {
+    lat = gps.lat;
+    lng = gps.lng;
+  } else if (mode === "wifi") {
+    lat = wifiGps.lat;
+    lng = wifiGps.lng;
+  } else if (mode === "phone") {
+    lat = phoneGps.lat;
+    lng = phoneGps.lng;
   }
-};
 
-// Reset all directions when the button is released
-const handleDirectionEnd = () => {
-  // Do nothing here for the 4 special directions (they will turn off automatically after 2 seconds)
-  setDirection('None');
-  
-  update(ref(database), {
-    Up: 'OFF',
-    Down: 'OFF',
-    Left: 'OFF',
-    Right: 'OFF',
-    None: 'OFF'
-    // Note: UpLeft, UpRight, DownLeft, DownRight are handled by timeout and will be turned off automatically
-  }).catch(error => console.error('Firebase update error:', error));
+  const mapUrl = `https://www.google.com/maps?q=${lat},${lng}&output=embed`;
 
-  console.log('Direction: OFF');
-};
-
-
-
-  const handleSliderChange = (event) => {
-    const newValue = parseInt(event.target.value);
-    setSliderValue(newValue);
-
-    update(ref(database), { sliderValue: newValue })
-      .catch(error => console.error('Firebase update error:', error));
-
-    console.log('Slider value:', newValue);
-  };
-
-  const mapSrc = `https://www.google.com/maps/embed/v1/view?key=AIzaSyDGjZObV-fDdbdNNzY2HPZ6NossfINjEHs&center=${latitude},${longitude}&zoom=15`;
-
-
-  
-  if (!isLoggedIn) {
+  // ================= LOGIN =================
+  if (!user) {
     return (
       <div style={styles.loginContainer}>
         <h1>Login</h1>
-        {error && <p style={error.style}>{error.message}</p>} {/* Display error message */}
+        {error && <p style={{ color: "red" }}>{error}</p>}
 
-        <input 
-          type="email" 
-          placeholder="Email" 
+        <input
+          placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           style={styles.input}
         />
-        <input 
-          type="password" 
-          placeholder="Password" 
+
+        <input
+          placeholder="Password"
+          type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           style={styles.input}
         />
-        <button onClick={handleLogin} style={styles.button}>Login</button>
+
+        <button onClick={handleLogin} style={styles.button}>
+          Login
+        </button>
       </div>
     );
   }
 
-
+  // ================= UI =================
   return (
-    
-    
-    
-    
     <div style={styles.container}>
-      <h1>Car Control</h1>
+
+      <h1>🧠 Smart Wheelchair</h1>
       <button onClick={handleLogout} style={styles.button}>Logout</button>
 
-      
-      {/* Directional buttons */}
-      <div style={styles.arrowContainer}>
-        <div style={styles.horizontalArrows}>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('UpLeft')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('UpLeft')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ↖️
-          </button>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('Up')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('Up')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ⬆️
-          </button>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('UpRight')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('UpRight')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ↗️
-          </button>
-        </div>
-        <div style={styles.horizontalArrows}>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('Left')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('Left')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ⬅️
-          </button>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('Right')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('Right')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ➡️
-          </button>
-        </div>
-        <div style={styles.horizontalArrows}>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('DownLeft')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('DownLeft')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ↙️
-          </button>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('Down')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('Down')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ⬇️
-          </button>
-          <button 
-            style={styles.arrowButton} 
-            onMouseDown={() => handleDirectionStart('DownRight')}
-            onMouseUp={handleDirectionEnd}
-            onTouchStart={() => handleDirectionStart('DownRight')}
-            onTouchEnd={handleDirectionEnd}
-          >
-            ↘️
-          </button>
-        </div>
+      {/* STATUS */}
+      <div style={styles.card}>
+        <h2>Status: {status}</h2>
       </div>
-      <div style={styles.sliderDesign}>
-  Direction: {direction === 'None' ? 'OFF' : direction}
-</div>
 
-      <input
-        type="range"
-        min={0}
-        max={255}
-        value={sliderValue}
-        onChange={handleSliderChange}
-        style={styles.slider} 
-      />
-      <p>Slider Value: {sliderValue}</p>
-      <h2 style={styles.label}>CCTV Camera</h2>
+      {/* CCTV FULL WIDTH FIXED */}
+      <div style={styles.cardFull}>
+        <h2>📷 CCTV</h2>
 
-      <div style={styles.mediaContainer}>
-        <div style={styles.videoContainer}>
-          {/* <h2 style={styles.label}>CCTV Camera</h2> */}
+        <div style={styles.camWrap}>
           <iframe
-            src="https://wasp-trusty-sheep.ngrok-free.app/?action=stream"
-            title="CCTV Camera"
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            src={CCTV_URL}
+            style={styles.cam}
             allowFullScreen
-            style={styles.video}
-          ></iframe>
-        </div>
-
-        <div style={styles.mapContainer}>
-          <h2 style={styles.label}>Car Location</h2>
-          {latitude && longitude ? ( 
-            <>
-              <iframe
-                src={mapSrc}
-                width="600"
-                height="450"
-                style={styles.map}
-                allowFullScreen=""
-                loading="lazy"
-                title="Car Location"
-                referrerPolicy="no-referrer-when-downgrade"
-              ></iframe>
-
-              <button 
-                style={styles.button}
-                onClick={() => window.open(`https://www.google.com/maps?q=${latitude},${longitude}`, '_blank')}
-              >
-                Open in Google Maps
-              </button>
-            </>
-          ) : (
-            <p>Loading map...</p>
-          )}
+          />
         </div>
       </div>
+
+      {/* HEART */}
+      <div style={styles.card}>
+        <h2>❤️ Heart Rate</h2>
+        <p>{heart.current}</p>
+        <p>Avg: {heart.avg}</p>
+        <p>Last: {heart.last}</p>
+      </div>
+
+      {/* MPU */}
+      <div style={styles.card}>
+        <h2>📊 MPU6050</h2>
+        <p>AX: {mpu.ax}</p>
+        <p>AY: {mpu.ay}</p>
+        <p>AZ: {mpu.az}</p>
+        <p>Total: {mpu.total_acc}</p>
+      </div>
+
+      {/* LOCATION */}
+      <div style={styles.card}>
+        <h2>📍 Location Mode</h2>
+        
+        {/* NEW: Added PHONE button */}
+
+         <button 
+          onClick={() => setMode("phone")} 
+          style={{ ...styles.button, opacity: mode === "phone" ? 1 : 0.5 }}
+        >
+          PHONE
+        </button>
+        
+        <button 
+          onClick={() => setMode("wifi")} 
+          style={{ ...styles.button, opacity: mode === "wifi" ? 1 : 0.5 }}
+        >
+          WiFi
+        </button>
+        <button 
+          onClick={() => setMode("gps")} 
+          style={{ ...styles.button, opacity: mode === "gps" ? 1 : 0.5 }}
+        >
+          GPS
+        </button>
+
+       
+
+        <iframe 
+          src={mapUrl} 
+          style={{ width: "100%", height: 300, border: "none", borderRadius: "10px", marginTop: "10px" }} 
+        />
+      </div>
+
+      {/* LAST ALERT */}
+      <div style={styles.card}>
+        <h2>🚨 Last Alert</h2>
+        {lastAlert ? (
+          <>
+            <p>{lastAlert.type}</p>
+            <p>{lastAlert.reason}</p>
+            <p>{lastAlert.time}</p>
+          </>
+        ) : (
+          <p>No alerts</p>
+        )}
+      </div>
+
     </div>
   );
 }
+
+// ================= STYLES =================
 const styles = {
+
   container: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    height: '100vh',
-    backgroundColor: '#333',
-    color: 'white',
-    paddingBottom: '100px',
+    background: "#111",
+    color: "white",
+    minHeight: "100vh",
+    padding: "15px",
+    boxSizing: "border-box" // Prevents padding from causing horizontal overflow
+  },
+
+  card: {
+    background: "#222",
+    padding: 15,
+    margin: "15px 0", // Changed to top/bottom only to prevent horizontal overflow
+    borderRadius: 10
+  },
+
+  cardFull: {
+    background: "#222",
+    padding: 15,
+    margin: "15px 0", // Changed to top/bottom only to prevent horizontal overflow
+    borderRadius: 10,
+    width: "100%",
+    boxSizing: "border-box"
+  },
+
+  camWrap: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center", // This centers the iframe
+    alignItems: "center",
+    background: "#1a1a1a", // Optional: slight background distinction
+    borderRadius: "10px",
+    padding: "10px 0"
+  },
+
+  cam: {
+    width: "640px",      // Strict width so the flexbox can center it (matches standard camera res)
+    maxWidth: "100%",    // Keeps it responsive on mobile
+    height: "480px",     // Strict height to match
+    border: "none",
+    borderRadius: "10px"
   },
 
   loginContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh', // Keep this for full viewport height
-    width: '100vw', // Set full viewport width
-    padding: '20px', // Add padding for more space
-    backgroundColor: '#333',
-    color: 'white',
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    height: "100vh",
+    background: "#111",
+    color: "white"
   },
+
   input: {
-    fontSize: '18px', // Increase font size
-    padding: '10px',  // Add padding for better spacing
-    width: '250px',   // Set a width for the input fields
-    borderRadius: '5px',
-    border: '1px solid #ccc',
-    marginBottom: '10px', // Add space between inputs
+    padding: 10,
+    margin: 5,
+    width: 250,
+    borderRadius: 5,
+    border: "none"
   },
-  
-  
 
-  arrowContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    margin: '20px 0',
-  },
-  horizontalArrows: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    width: '300px',
-  },
-  arrowButton: {
-    backgroundColor: '#4CAF50',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    padding: '20px',
-    fontSize: '20px',
-    cursor: 'pointer',
-    margin: '5px',
-    outline: 'none', // Removes focus outline
-    boxShadow: 'none', // Removes shadow on focus
-    userSelect: 'none', // Prevents text selection on long press
-    '-webkit-user-select': 'none', // For mobile WebKit browsers
-    '-moz-user-select': 'none', // For Firefox
-    '-ms-user-select': 'none', // For Internet Explorer/Edge
-    '-webkit-tap-highlight-color': 'transparent', // Removes mobile highlight
-    touchAction: 'none', // Disables default touch behaviors
-},
-
-
-
-sliderDesign: {
-  outline: 'none', // Removes focus outline
-
-
-  boxShadow: 'none', // Removes shadow on focus
-  userSelect: 'none', // Prevents text selection on long press
-  '-webkit-user-select': 'none', // For mobile WebKit browsers
-  '-moz-user-select': 'none', // For Firefox
-  '-ms-user-select': 'none', // For Internet Explorer/Edge
-  '-webkit-tap-highlight-color': 'transparent', // Removes mobile highlight
-  touchAction: 'none', // Disables default touch behaviors
-  
-},
-
-
-  slider: {
-    width: '300px',
-    marginTop: '10px',
-  },
-  mediaContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center', // Center items horizontally
-    justifyContent: 'center', // Center items vertically
-    width: '100%',
-    padding: '20px',
-  },
-  videoContainer: {
-    display: 'flex',
-    justifyContent: 'center', // Center the video
-    width: '100%',
-    marginBottom: '30px', // Add some space between video and map
-  },
-  video: {
-    width: '600px', // Adjusted width for better display
-    height: '500px',
-    borderRadius: '10px',
-  },
-  mapContainer: {
-    display: 'flex',
-    flexDirection: 'column', // Stack map and button vertically
-    alignItems: 'center', // Center the map
-    justifyContent: 'center',
-    width: '100%',
-  },
-  map: {
-    width: '600px', // Adjusted width for better display
-    height: '5s00px',
-    borderRadius: '10px',
-  
-
-  },
-  label: {
-    marginBottom: '10px',
-    textAlign: 'center', // Center the title text
-    fontSize: '18px', // Adjust font size for better readability
-  },
   button: {
-    backgroundColor: '#4CAF50',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    padding: '10px',
-    fontSize: '16px',
-    cursor: 'pointer',
-    marginTop: '10px', // Add margin above the button
-  },
+    padding: "10px 20px",
+    margin: 5,
+    background: "green",
+    color: "white",
+    border: "none",
+    borderRadius: 5,
+    cursor: "pointer",
+    fontWeight: "bold",
+    transition: "opacity 0.2s"
+  }
 };
-
 
 export default App;
