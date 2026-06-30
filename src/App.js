@@ -54,7 +54,7 @@ function App() {
   const [mode, setMode] = useState("wifi");
 
   const CCTV_URL =
-    "https://spongy-pawing-cornea.ngrok-free.dev/?action=stream";
+    "https://cbtuvpwzvo.a.pinggy.link/?action=stream";
 
   // ================= AUTO LOGIN =================
   useEffect(() => {
